@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { fieldLabel, REPORT_STATUS_LABEL } from '@/lib/labels';
@@ -23,6 +24,7 @@ function photoCount(fieldKey: string, attachments: Attachment[]) {
 }
 
 export function ReportDetail({ id }: { id: string }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
@@ -65,6 +67,16 @@ export function ReportDetail({ id }: { id: string }) {
     onSettled: refresh,
   });
   const generate = useMutation({ mutationFn: () => apiFetch(`/reports/${id}/generate`, { method: 'POST' }), onSuccess: refresh });
+  const workOrderId = report?.workOrderId;
+  const remove = useMutation({
+    mutationFn: () => apiFetch(`/reports/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['report', id] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['work-order', workOrderId] });
+      router.push(`/work-orders/${workOrderId}`);
+    },
+  });
 
   if (isLoading) return <p className="text-sm text-gray-500">불러오는 중...</p>;
   if (error || !report) return <p className="text-sm text-red-600">{(error as Error)?.message ?? '보고서를 찾을 수 없습니다.'}</p>;
@@ -72,7 +84,7 @@ export function ReportDetail({ id }: { id: string }) {
   const editable = EDITABLE.includes(report.status);
   const attachments = report.workOrder?.attachments ?? [];
   const missingKeys = new Set(missing?.missing ?? []);
-  const actionError = [aiDraft, saveMutation, approve, generate].find((m) => m.error)?.error as Error | undefined;
+  const actionError = [aiDraft, saveMutation, approve, generate, remove].find((m) => m.error)?.error as Error | undefined;
 
   return (
     <div className="space-y-6">
@@ -170,6 +182,15 @@ export function ReportDetail({ id }: { id: string }) {
         >
           PDF 생성
         </button>
+        {editable && (
+          <button
+            onClick={() => window.confirm('이 보고서를 삭제할까요? 되돌릴 수 없습니다.') && remove.mutate()}
+            disabled={remove.isPending}
+            className="ml-auto rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            보고서 삭제
+          </button>
+        )}
         {report.pdfUrl && (
           <a href={report.pdfUrl} target="_blank" className="text-sm text-brand underline">
             PDF 열기

@@ -24,7 +24,7 @@ const STATUS_COLOR: Record<string, string> = {
 export function WorkOrdersList() {
   const router = useRouter();
   const [siteChoice, setSiteChoice] = useState('');
-  const [equipmentId, setEquipmentId] = useState('');
+  const [equipmentChoice, setEquipmentChoice] = useState<string | null>(null);
 
   const { data: workOrders, isLoading } = useQuery({
     queryKey: ['work-orders'],
@@ -37,6 +37,7 @@ export function WorkOrdersList() {
     queryFn: () => apiFetch<Equipment[]>(`/equipment?siteId=${siteId}`),
     enabled: !!siteId,
   });
+  const equipmentId = equipmentChoice ?? equipment?.[0]?.id ?? '';
 
   // clientUuid는 모바일 앱이 오프라인에서 만드는 값과 같은 역할(멱등 키)이다.
   const create = useMutation({
@@ -64,7 +65,7 @@ export function WorkOrdersList() {
           value={siteId}
           onChange={(e) => {
             setSiteChoice(e.target.value);
-            setEquipmentId('');
+            setEquipmentChoice(null);
           }}
         >
           {sites?.map((site) => (
@@ -76,7 +77,7 @@ export function WorkOrdersList() {
         <select
           className="rounded border border-gray-300 px-3 py-2 text-sm"
           value={equipmentId}
-          onChange={(e) => setEquipmentId(e.target.value)}
+          onChange={(e) => setEquipmentChoice(e.target.value)}
         >
           <option value="">설비 선택 안 함</option>
           {equipment?.map((eq) => (
@@ -92,6 +93,7 @@ export function WorkOrdersList() {
           작업 생성
         </button>
         {create.error && <span className="text-sm text-red-600">{(create.error as Error).message}</span>}
+        {!equipmentId && <span className="w-full text-xs text-amber-700">설비 없이 만들면 승인해도 설비 이력이 남지 않습니다.</span>}
       </form>
       {isLoading && <p className="text-sm text-gray-500">불러오는 중...</p>}
       <table className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white text-sm">

@@ -51,12 +51,21 @@ export function WorkOrderDetail({ id }: { id: string }) {
     onSuccess: (report) => router.push(`/reports/${report.id}`),
   });
 
+  const cancel = useMutation({
+    mutationFn: () => apiFetch(`/work-orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'CANCELLED' }) }),
+    onSuccess: () => {
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['work-orders'] });
+    },
+  });
+
   if (isLoading) return <p className="text-sm text-gray-500">불러오는 중...</p>;
   if (error || !order) return <p className="text-sm text-red-600">{(error as Error)?.message ?? '작업을 찾을 수 없습니다.'}</p>;
 
   const records = order.workRecords ?? [];
   const attachments = order.attachments ?? [];
   const reports = order.reports ?? [];
+  const cancelled = order.status === 'CANCELLED';
 
   return (
     <div className="space-y-6">
@@ -67,6 +76,17 @@ export function WorkOrderDetail({ id }: { id: string }) {
         <h1 className="mt-1 text-xl font-bold text-brand">
           {order.site?.name} · {order.equipment?.type ?? '설비 없음'}
         </h1>
+        {cancelled && <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">취소된 작업입니다.</p>}
+        {!cancelled && order.status !== 'COMPLETED' && (
+          <button
+            onClick={() => window.confirm('이 작업을 취소할까요?') && cancel.mutate()}
+            disabled={cancel.isPending}
+            className="mt-2 rounded border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            작업 취소
+          </button>
+        )}
+        {cancel.error && <p className="mt-1 text-sm text-red-600">{(cancel.error as Error).message}</p>}
       </div>
 
       <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
@@ -165,7 +185,7 @@ export function WorkOrderDetail({ id }: { id: string }) {
           </select>
           <button
             onClick={() => createReport.mutate()}
-            disabled={!templateId || createReport.isPending}
+            disabled={!templateId || cancelled || createReport.isPending}
             className="rounded bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-light disabled:opacity-50"
           >
             보고서 만들기

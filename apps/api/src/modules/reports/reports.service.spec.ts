@@ -18,7 +18,7 @@ const report = (over: any = {}) => ({
 
 function setup(r: any) {
   const prisma: any = {
-    report: { update: jest.fn(async ({ data }: any) => ({ ...r, ...data })) },
+    report: { update: jest.fn(async ({ data }: any) => ({ ...r, ...data })), delete: jest.fn() },
     aiGeneration: { create: jest.fn() },
   };
   const equipment: any = { recordHistory: jest.fn(), buildContext: jest.fn(async () => '- 2026-08-12 베어링 교체') };
@@ -69,5 +69,27 @@ describe('ReportsService', () => {
 
   it('승인 전에는 PDF를 만들 수 없다', async () => {
     await expect(setup(report({ status: 'REVIEW' })).service.generatePdf('c1', 'r1')).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('미승인 보고서는 삭제하고 감사 로그를 남긴다', async () => {
+    const { service, prisma, audit } = setup(report({ status: 'REVIEW' }));
+    await expect(service.remove('c1', 'r1', 'u1')).resolves.toEqual({ deleted: true });
+    expect(prisma.report.delete).toHaveBeenCalledWith({ where: { id: 'r1' } });
+    expect(audit.log).toHaveBeenCalledWith('c1', 'u1', 'delete', 'report', 'r1');
+  });
+
+  it.each(['APPROVED', 'GENERATED'])('%s 보고서는 삭제할 수 없다', async (status) => {
+    const { service, prisma } = setup(report({ status }));
+    await expect(service.remove('c1', 'r1', 'u1')).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.report.delete).not.toHaveBeenCalled();
+  });
+
+  it('취소된 작업에는 보고서를 만들 수 없다', async () => {
+    const { service, prisma } = setup(report());
+    prisma.reportTemplate = { findFirst: jest.fn(async () => ({ id: 't1' })) };
+    prisma.workOrder = { findFirst: jest.fn(async () => ({ id: 'wo-1', status: 'CANCELLED' })) };
+    prisma.report.create = jest.fn();
+    await expect(service.create('c1', { workOrderId: 'wo-1', templateId: 't1' })).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.report.create).not.toHaveBeenCalled();
   });
 });

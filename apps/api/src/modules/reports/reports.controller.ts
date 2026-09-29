@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -42,6 +42,12 @@ export class ReportsController {
   @Get(':id/missing-fields')
   checkMissing(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.reportsService.checkMissing(user.companyId, id);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN', 'MANAGER')
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.reportsService.remove(user.companyId, id, user.id);
   }
 
   @Post(':id/approve')

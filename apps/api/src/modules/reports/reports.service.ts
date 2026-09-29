@@ -51,10 +51,20 @@ export class ReportsService {
     if (!template) throw new NotFoundException('템플릿을 찾을 수 없습니다.');
     const workOrder = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, site: { companyId } } });
     if (!workOrder) throw new NotFoundException('작업을 찾을 수 없습니다.');
+    if (workOrder.status === 'CANCELLED') throw new BadRequestException('취소된 작업에는 보고서를 만들 수 없습니다.');
 
     return this.prisma.report.create({
       data: { workOrderId: dto.workOrderId, templateId: dto.templateId, status: 'DRAFT' },
     });
+  }
+
+  // 승인 전(초안·AI 초안·검토중) 보고서만 삭제할 수 있다. 승인본은 증빙이라 남기고, 바꿀 때는 새 버전으로 (설계서 3.4).
+  async remove(companyId: string, id: string, actorId: string) {
+    const report = await this.findOne(companyId, id);
+    this.assertDeletable(report.status);
+    await this.prisma.report.delete({ where: { id } });
+    await this.audit.log(companyId, actorId, 'delete', 'report', id);
+    return { deleted: true };
   }
 
   // 현장 기록 원문 + 설비 이력 Context -> AI 구조화 -> 보고서 초안 (설계서 6.1, 6.5).
@@ -158,6 +168,10 @@ export class ReportsService {
     const pdfUrl = await this.attachments.uploadBuffer(companyId, buffer, 'application/pdf');
 
     return this.prisma.report.update({ where: { id }, data: { status: 'GENERATED', pdfUrl } });
+  }
+
+  private assertDeletable(status: string) {
+    if (!EDITABLE.includes(status)) throw new ConflictException('승인된 보고서는 삭제할 수 없습니다.');
   }
 
   private assertEditable(status: string) {
