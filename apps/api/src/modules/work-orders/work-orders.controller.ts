@@ -23,6 +23,11 @@ export class WorkOrdersController {
     return this.workOrdersService.findOne(user.companyId, id);
   }
 
+  @Get(':id/missing-fields')
+  checkMissingFields(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.workOrdersService.checkMissingFields(user.companyId, id);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateWorkOrderDto) {
     return this.workOrdersService.create(user.companyId, dto);

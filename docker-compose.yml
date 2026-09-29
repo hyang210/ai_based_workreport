@@ -1,0 +1,52 @@
+name: workreport-ai
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workreport-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workreport
+      POSTGRES_PASSWORD: workreport
+      POSTGRES_DB: workreport
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workreport"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: workreport-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible object storage for local dev (사진/PDF 첨부파일).
+  # 운영 환경에서는 실제 S3(or 유사 서비스)로 교체.
+  minio:
+    image: minio/minio:latest
+    container_name: workreport-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: workreport
+      MINIO_ROOT_PASSWORD: workreport123
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    volumes:
+      - minio_data:/data
+
+volumes:
+  postgres_data:
+  minio_data:
