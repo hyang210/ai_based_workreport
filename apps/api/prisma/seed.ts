@@ -28,17 +28,17 @@ async function main() {
     },
   });
 
-  const site = await prisma.site.create({
-    data: {
-      companyId: company.id,
-      name: '샘플 빌딩',
-      address: '서울시 강남구',
-      customerName: '샘플 고객사',
-    },
-  });
+  // 여러 번 실행해도 같은 데이터가 유지되도록, 이미 있으면 그대로 쓰고 없을 때만 만든다.
+  const site =
+    (await prisma.site.findFirst({ where: { companyId: company.id, name: '샘플 빌딩' } })) ??
+    (await prisma.site.create({
+      data: { companyId: company.id, name: '샘플 빌딩', address: '서울시 강남구', customerName: '샘플 고객사' },
+    }));
 
-  const equipment = await prisma.equipment.create({
-    data: {
+  const equipment = await prisma.equipment.upsert({
+    where: { qrCode: 'QR-SAMPLE-001' },
+    update: {},
+    create: {
       siteId: site.id,
       type: '냉방기',
       serialNumber: 'AC-2024-001',
@@ -46,7 +46,9 @@ async function main() {
     },
   });
 
-  const template = await prisma.reportTemplate.create({
+  const template =
+    (await prisma.reportTemplate.findFirst({ where: { companyId: company.id, name: '작업완료보고서 (기본)' } })) ??
+    (await prisma.reportTemplate.create({
     data: {
       companyId: company.id,
       name: '작업완료보고서 (기본)',
@@ -71,7 +73,7 @@ async function main() {
         ],
       },
     },
-  });
+  }));
 
   console.log({ company: company.name, admin: admin.email, site: site.name, equipment: equipment.type, template: template.name });
   console.log('로그인: admin@example.com / password123');

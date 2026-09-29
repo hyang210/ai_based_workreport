@@ -24,3 +24,17 @@ export const ATTACHMENT_LABEL: Record<string, string> = {
   PHOTO_AFTER: '작업 후 사진',
   PHOTO_GENERAL: '일반 사진',
 };
+
+export const WORK_ORDER_STATUS_LABEL: Record<string, string> = {
+  OPEN: '대기',
+  IN_PROGRESS: '진행중',
+  COMPLETED: '완료',
+  CANCELLED: '취소됨',
+};
+
+export const WORK_ORDER_STATUS_COLOR: Record<string, string> = {
+  OPEN: 'bg-gray-100 text-gray-700',
+  IN_PROGRESS: 'bg-blue-100 text-blue-700',
+  COMPLETED: 'bg-green-100 text-green-700',
+  CANCELLED: 'bg-red-100 text-red-700',
+};

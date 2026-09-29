@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { ATTACHMENT_LABEL, REPORT_STATUS_LABEL } from '@/lib/labels';
+import { ATTACHMENT_LABEL, REPORT_STATUS_LABEL, WORK_ORDER_STATUS_COLOR, WORK_ORDER_STATUS_LABEL } from '@/lib/labels';
 import type { Report, ReportTemplate, WorkOrder } from '@workreport/shared-types';
 
 export function WorkOrderDetail({ id }: { id: string }) {
@@ -73,19 +73,24 @@ export function WorkOrderDetail({ id }: { id: string }) {
         <Link href="/work-orders" className="text-sm text-gray-500 hover:underline">
           ← 작업 목록
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-brand">
-          {order.site?.name} · {order.equipment?.type ?? '설비 없음'}
-        </h1>
-        {cancelled && <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">취소된 작업입니다.</p>}
-        {!cancelled && order.status !== 'COMPLETED' && (
-          <button
-            onClick={() => window.confirm('이 작업을 취소할까요?') && cancel.mutate()}
-            disabled={cancel.isPending}
-            className="mt-2 rounded border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-          >
-            작업 취소
-          </button>
-        )}
+        <div className="mt-1 flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-bold text-brand">
+            {order.site?.name} · {order.equipment?.type ?? '설비 없음'}
+          </h1>
+          <span className={`rounded px-2 py-1 text-xs font-medium ${WORK_ORDER_STATUS_COLOR[order.status]}`}>
+            {WORK_ORDER_STATUS_LABEL[order.status]}
+          </span>
+          {!cancelled && order.status !== 'COMPLETED' && (
+            <button
+              onClick={() => window.confirm('이 작업을 취소할까요?') && cancel.mutate()}
+              disabled={cancel.isPending}
+              className="ml-auto rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              작업 취소
+            </button>
+          )}
+        </div>
+        {cancelled && <p className="mt-2 rounded border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">취소된 작업입니다. 새 보고서를 만들 수 없습니다.</p>}
         {cancel.error && <p className="mt-1 text-sm text-red-600">{(cancel.error as Error).message}</p>}
       </div>
 
