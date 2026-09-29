@@ -1,0 +1,334 @@
+// WorkReport AI — Prisma schema
+// 설계서 7장 "데이터베이스 설계" / 7.2 "권장 상태값" 기준으로 작성.
+// Company -> Users/Sites -> Equipment/WorkOrders -> WorkRecords/Attachments -> Reports/Templates
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Enums (설계서 7.2 권장 상태값)
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  WORKER
+}
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ReportStatus {
+  DRAFT
+  AI_GENERATED
+  REVIEW
+  APPROVED
+  GENERATED
+  SENT
+}
+
+enum AttachmentType {
+  PHOTO_BEFORE
+  PHOTO_AFTER
+  PHOTO_GENERAL
+  VOICE
+  DOCUMENT
+}
+
+enum SyncOperation {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum SyncStatus {
+  PENDING
+  APPLIED
+  FAILED
+}
+
+// ─────────────────────────────────────────────
+// Core tenancy
+// ─────────────────────────────────────────────
+
+model Company {
+  id             String   @id @default(uuid())
+  name           String
+  businessNumber String?  @map("business_number")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  users            User[]
+  sites            Site[]
+  reportTemplates  ReportTemplate[]
+  auditLogs        AuditLog[]
+
+  @@map("companies")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  companyId String   @map("company_id")
+  email     String   @unique
+  name      String
+  role      UserRole @default(WORKER)
+  passwordHash String @map("password_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedOrders WorkOrder[] @relation("AssignedWorker")
+  auditLogs      AuditLog[]
+
+  @@index([companyId])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// Sites & Equipment
+// ─────────────────────────────────────────────
+
+model Site {
+  id           String   @id @default(uuid())
+  companyId    String   @map("company_id")
+  name         String
+  address      String?
+  customerName String?  @map("customer_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  equipment  Equipment[]
+  workOrders WorkOrder[]
+
+  @@index([companyId, createdAt])
+  @@map("sites")
+}
+
+model Equipment {
+  id           String   @id @default(uuid())
+  siteId       String   @map("site_id")
+  type         String
+  serialNumber String?  @map("serial_number")
+  qrCode       String?  @unique @map("qr_code")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  site       Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  workOrders WorkOrder[]
+  history    EquipmentHistory[]
+
+  @@index([siteId, createdAt])
+  @@map("equipment")
+}
+
+// ─────────────────────────────────────────────
+// Work orders / records / attachments
+// ─────────────────────────────────────────────
+
+model WorkOrder {
+  id             String          @id @default(uuid())
+  siteId         String          @map("site_id")
+  equipmentId    String?         @map("equipment_id")
+  assignedUserId String?         @map("assigned_user_id")
+  status         WorkOrderStatus @default(OPEN)
+  // 클라이언트가 발급하는 UUID. Offline 생성 후 동기화 시 idempotency key로 사용.
+  clientUuid     String          @unique @map("client_uuid")
+  scheduledAt    DateTime?       @map("scheduled_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  site           Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  equipment      Equipment?         @relation(fields: [equipmentId], references: [id])
+  assignedWorker User?              @relation("AssignedWorker", fields: [assignedUserId], references: [id])
+  workRecords    WorkRecord[]
+  attachments    Attachment[]
+  reports        Report[]
+  equipmentHistory EquipmentHistory[]
+
+  @@index([siteId, createdAt])
+  @@index([equipmentId, createdAt])
+  @@index([status])
+  @@map("work_orders")
+}
+
+model WorkRecord {
+  id          String   @id @default(uuid())
+  clientUuid  String   @unique @default(uuid()) @map("client_uuid")
+  workOrderId String   @map("work_order_id")
+  description String?
+  issue       String?
+  action      String?
+  result      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@map("work_records")
+}
+
+model Attachment {
+  id          String         @id @default(uuid())
+  clientUuid  String         @unique @default(uuid()) @map("client_uuid")
+  workOrderId String         @map("work_order_id")
+  type        AttachmentType
+  fileUrl     String         @map("file_url")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@map("attachments")
+}
+
+// ─────────────────────────────────────────────
+// Templates (동적 템플릿 — 6.3 참고, JSONB로 필드/섹션 유연하게 저장)
+// ─────────────────────────────────────────────
+
+model ReportTemplate {
+  id         String   @id @default(uuid())
+  companyId  String   @map("company_id")
+  name       String
+  reportType String   @map("report_type") // work_completion / daily_report / inspection ...
+  version    Int      @default(1)
+  // 섹션 구조 전체를 JSONB로 저장 (설계서 6.3 동적 템플릿 구조 예시 참고)
+  sections   Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  templateFields TemplateField[]
+  reports        Report[]
+
+  @@index([companyId])
+  @@map("report_templates")
+}
+
+model TemplateField {
+  id         String  @id @default(uuid())
+  templateId String  @map("template_id")
+  fieldKey   String  @map("field_key")
+  fieldType  String  @map("field_type") // text / number / date / photo / checklist ...
+  required   Boolean @default(false)
+  sortOrder  Int     @default(0) @map("sort_order")
+
+  template ReportTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("template_fields")
+}
+
+// ─────────────────────────────────────────────
+// Reports & AI generation history
+// ─────────────────────────────────────────────
+
+model Report {
+  id          String       @id @default(uuid())
+  workOrderId String       @map("work_order_id")
+  templateId  String       @map("template_id")
+  status      ReportStatus @default(DRAFT)
+  // 템플릿 필드(fieldKey) -> 값. AI 초안이 채우고 관리자가 수정한다. 승인/PDF는 이 값을 기준으로 한다.
+  content     Json?
+  pdfUrl      String?      @map("pdf_url")
+  version     Int          @default(1)
+  approvedById String?     @map("approved_by_id")
+  approvedAt  DateTime?    @map("approved_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  workOrder     WorkOrder       @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  template      ReportTemplate  @relation(fields: [templateId], references: [id])
+  aiGenerations AiGeneration[]
+
+  @@index([workOrderId])
+  @@index([status])
+  @@map("reports")
+}
+
+model AiGeneration {
+  id         String   @id @default(uuid())
+  reportId   String   @map("report_id")
+  model      String
+  inputText  String   @map("input_text")
+  outputJson Json     @map("output_json")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("ai_generations")
+}
+
+// ─────────────────────────────────────────────
+// Equipment history (Context AI 5.5 참고)
+// ─────────────────────────────────────────────
+
+model EquipmentHistory {
+  id          String   @id @default(uuid())
+  equipmentId String   @map("equipment_id")
+  workOrderId String?  @map("work_order_id")
+  summary     String
+  occurredAt  DateTime @map("occurred_at")
+
+  equipment Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@index([equipmentId, occurredAt])
+  @@map("equipment_history")
+}
+
+// ─────────────────────────────────────────────
+// Offline sync (5.1 Offline-first 아키텍처 참고)
+// ─────────────────────────────────────────────
+
+model SyncEvent {
+  eventId    String        @id @default(uuid()) @map("event_id")
+  companyId  String        @map("company_id")
+  deviceId   String        @map("device_id")
+  entityType String        @map("entity_type") // work_order / work_record / attachment ...
+  entityId   String        @map("entity_id")
+  operation  SyncOperation
+  status     SyncStatus    @default(PENDING)
+  retryCount Int           @default(0) @map("retry_count")
+  error      String?
+  payload    Json
+  createdAt  DateTime      @default(now()) @map("created_at")
+  processedAt DateTime?    @map("processed_at")
+
+  @@index([companyId, createdAt])
+  @@index([deviceId])
+  @@index([entityType, entityId])
+  @@map("sync_events")
+}
+
+// ─────────────────────────────────────────────
+// Audit log
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  companyId  String   @map("company_id")
+  actorId    String?  @map("actor_id")
+  action     String   // create / update / approve / download / sync ...
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  actor   User?   @relation(fields: [actorId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@map("audit_logs")
+}
