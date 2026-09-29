@@ -164,6 +164,7 @@ model WorkOrder {
 
 model WorkRecord {
   id          String   @id @default(uuid())
+  clientUuid  String   @unique @default(uuid()) @map("client_uuid")
   workOrderId String   @map("work_order_id")
   description String?
   issue       String?
@@ -180,6 +181,7 @@ model WorkRecord {
 
 model Attachment {
   id          String         @id @default(uuid())
+  clientUuid  String         @unique @default(uuid()) @map("client_uuid")
   workOrderId String         @map("work_order_id")
   type        AttachmentType
   fileUrl     String         @map("file_url")
@@ -237,6 +239,8 @@ model Report {
   workOrderId String       @map("work_order_id")
   templateId  String       @map("template_id")
   status      ReportStatus @default(DRAFT)
+  // 템플릿 필드(fieldKey) -> 값. AI 초안이 채우고 관리자가 수정한다. 승인/PDF는 이 값을 기준으로 한다.
+  content     Json?
   pdfUrl      String?      @map("pdf_url")
   version     Int          @default(1)
   approvedById String?     @map("approved_by_id")
@@ -291,19 +295,21 @@ model EquipmentHistory {
 
 model SyncEvent {
   eventId    String        @id @default(uuid()) @map("event_id")
+  companyId  String        @map("company_id")
   deviceId   String        @map("device_id")
   entityType String        @map("entity_type") // work_order / work_record / attachment ...
   entityId   String        @map("entity_id")
   operation  SyncOperation
   status     SyncStatus    @default(PENDING)
   retryCount Int           @default(0) @map("retry_count")
+  error      String?
   payload    Json
   createdAt  DateTime      @default(now()) @map("created_at")
   processedAt DateTime?    @map("processed_at")
 
+  @@index([companyId, createdAt])
   @@index([deviceId])
   @@index([entityType, entityId])
-  @@index([status])
   @@map("sync_events")
 }
 

@@ -112,6 +112,7 @@ export interface Report {
   workOrderId: string;
   templateId: string;
   status: ReportStatus;
+  content?: Record<string, string | null> | null;
   pdfUrl?: string | null;
   version: number;
   createdAt: string;
@@ -120,7 +121,7 @@ export interface Report {
 }
 
 export interface MissingFieldsResult {
-  workOrderId: string;
+  reportId: string;
   missing: string[];
   isComplete: boolean;
 }

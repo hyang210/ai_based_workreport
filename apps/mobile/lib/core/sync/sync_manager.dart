@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show OrderingTerm, Value;
 import '../db/app_database.dart';
 import '../network/api_client.dart';
 
@@ -37,8 +37,10 @@ class SyncManager {
     if (_isSyncing) return;
     _isSyncing = true;
     try {
+      // 생성 순서대로 보낸다: 서버는 작업 CREATE가 먼저 도착해야 그 작업의 기록을 붙일 수 있다.
       final pending = await (_db.select(_db.syncQueueEntries)
-            ..where((t) => t.status.equals('PENDING')))
+            ..where((t) => t.status.equals('PENDING'))
+            ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
           .get();
 
       if (pending.isEmpty) return;

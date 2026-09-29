@@ -66,6 +66,8 @@ async function main() {
           { fieldKey: 'issue', fieldType: 'text', required: true, sortOrder: 1 },
           { fieldKey: 'action', fieldType: 'text', required: true, sortOrder: 2 },
           { fieldKey: 'result', fieldType: 'text', required: true, sortOrder: 3 },
+          { fieldKey: 'before_photos', fieldType: 'photo', required: false, sortOrder: 4 },
+          { fieldKey: 'after_photos', fieldType: 'photo', required: true, sortOrder: 5 },
         ],
       },
     },
