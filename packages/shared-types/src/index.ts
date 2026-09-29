@@ -64,6 +64,7 @@ export interface WorkOrder {
   equipment?: Equipment;
   workRecords?: WorkRecord[];
   attachments?: Attachment[];
+  reports?: Report[];
 }
 
 export interface WorkRecord {

@@ -1,17 +1,10 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { apiFetch } from '@/lib/api-client';
+import { REPORT_STATUS_LABEL } from '@/lib/labels';
 import type { Report } from '@workreport/shared-types';
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: '초안',
-  AI_GENERATED: 'AI 초안 생성됨',
-  REVIEW: '검토중',
-  APPROVED: '승인됨',
-  GENERATED: 'PDF 생성완료',
-  SENT: '전달완료',
-};
 
 export function ReportsList() {
   const queryClient = useQueryClient();
@@ -62,8 +55,12 @@ export function ReportsList() {
         <tbody>
           {reports?.map((report) => (
             <tr key={report.id} className="border-t border-gray-100">
-              <td className="px-4 py-2 font-medium">{report.template?.name ?? '-'}</td>
-              <td className="px-4 py-2 text-gray-600">{STATUS_LABEL[report.status]}</td>
+              <td className="px-4 py-2 font-medium">
+                <Link href={`/reports/${report.id}`} className="text-brand hover:underline">
+                  {report.template?.name ?? '-'}
+                </Link>
+              </td>
+              <td className="px-4 py-2 text-gray-600">{REPORT_STATUS_LABEL[report.status]}</td>
               <td className="px-4 py-2">
                 {report.pdfUrl ? (
                   <a href={report.pdfUrl} target="_blank" className="text-brand underline">

@@ -7,6 +7,7 @@ const links = [
   { href: '/work-orders', label: '작업' },
   { href: '/templates', label: '템플릿' },
   { href: '/reports', label: '보고서' },
+  { href: '/login', label: '로그인' },
 ];
 
 export function NavBar() {
