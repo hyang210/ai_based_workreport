@@ -92,8 +92,9 @@ work_order는 서버가 이미 COMPLETED/CANCELLED면 서버값 우선, work_rec
 3. 보고서 상세에서 *AI 초안 생성* → 내용 수정·저장 → 누락 배너 확인 → *승인* → *PDF 생성*
    - 필수 항목(이슈·조치·결과·작업 후 사진)이 비어 있으면 승인이 거부되고 배너에 누락 항목이 표시된다.
 
-> **저장소(MinIO) 참고**: MinIO 공식 이미지가 Docker Hub/quay.io에서 내려가 `docker compose up -d`의 minio 서비스는 받을 수 없다.
-> 지금은 `docker compose up -d postgres redis`로 필요한 것만 띄운다. 이 상태에서는 *PDF 생성*과 사진 파일 업로드만 동작하지 않는다(S3 호환 저장소로 교체 예정).
+> **파일 저장소**: 기본값은 `STORAGE_DRIVER=local` — 사진·PDF가 `apps/api/uploads/`에 저장된다(git 제외).
+> MinIO 이미지는 받을 수 없으므로 `docker compose up -d postgres redis`만 띄운다. 나중에 S3 호환 저장소를 쓰려면 `STORAGE_DRIVER=s3` + `S3_*` 값을 설정한다.
+> PDF 생성에는 Chromium이 필요하다: `npx playwright install chromium` (최초 1회).
 
 ## 설계서 대비 baseline의 범위
 

@@ -57,3 +57,34 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
+
+// 파일 업로드 (multipart). Content-Type은 브라우저가 boundary와 함께 정한다.
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const token = getToken();
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_URL}/api${path}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? `업로드 실패 (${res.status})`);
+  }
+  return res.json();
+}
+
+// 우리 API가 내려주는 파일은 로그인이 필요해서 <a href>로 바로 열 수 없다.
+// 토큰을 실어 받아 새 탭으로 연다. 외부 저장소(S3) URL은 그대로 연다.
+export async function openFile(url: string) {
+  if (!url.startsWith(`${API_URL}/api/`)) {
+    window.open(url, '_blank');
+    return;
+  }
+  const token = getToken();
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) throw new Error('파일을 열 수 없습니다.');
+  const blobUrl = URL.createObjectURL(await res.blob());
+  window.open(blobUrl, '_blank');
+}

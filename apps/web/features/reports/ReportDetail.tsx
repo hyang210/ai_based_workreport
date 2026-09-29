@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, openFile } from '@/lib/api-client';
 import { fieldLabel, REPORT_STATUS_LABEL } from '@/lib/labels';
 import type { Attachment, MissingFieldsResult, Report } from '@workreport/shared-types';
 
@@ -192,9 +192,9 @@ export function ReportDetail({ id }: { id: string }) {
           </button>
         )}
         {report.pdfUrl && (
-          <a href={report.pdfUrl} target="_blank" className="text-sm text-brand underline">
+          <button type="button" onClick={() => openFile(report.pdfUrl!).catch((e) => alert(e.message))} className="text-sm text-brand underline">
             PDF 열기
-          </a>
+          </button>
         )}
       </div>
     </div>

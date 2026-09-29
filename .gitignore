@@ -39,3 +39,6 @@ Thumbs.db
 
 # ts build cache
 *.tsbuildinfo
+
+# local file storage
+apps/api/uploads/

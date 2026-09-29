@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, apiUpload, openFile } from '@/lib/api-client';
 import { ATTACHMENT_LABEL, REPORT_STATUS_LABEL, WORK_ORDER_STATUS_COLOR, WORK_ORDER_STATUS_LABEL } from '@/lib/labels';
 import type { Report, ReportTemplate, WorkOrder } from '@workreport/shared-types';
 
@@ -13,7 +13,7 @@ export function WorkOrderDetail({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [text, setText] = useState('');
   const [photoType, setPhotoType] = useState('PHOTO_AFTER');
-  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [templateChoice, setTemplateChoice] = useState('');
 
   const { data: order, isLoading, error } = useQuery({
@@ -33,15 +33,17 @@ export function WorkOrderDetail({ id }: { id: string }) {
     },
   });
 
-  // 파일 저장소(S3 호환)를 붙이기 전까지는 사진 URL을 직접 넣어 첨부 상태만 검증한다.
+  // 사진을 서버에 올린 뒤(fileUrl 발급) 작업에 첨부로 확정한다.
   const addAttachment = useMutation({
-    mutationFn: () =>
-      apiFetch(`/work-orders/${id}/attachments`, {
+    mutationFn: async () => {
+      const { fileUrl } = await apiUpload<{ fileUrl: string }>('/attachments/upload', photoFile!);
+      return apiFetch(`/work-orders/${id}/attachments`, {
         method: 'POST',
-        body: JSON.stringify({ type: photoType, fileUrl: photoUrl }),
-      }),
+        body: JSON.stringify({ type: photoType, fileUrl }),
+      });
+    },
     onSuccess: () => {
-      setPhotoUrl('');
+      setPhotoFile(null);
       refresh();
     },
   });
@@ -133,7 +135,9 @@ export function WorkOrderDetail({ id }: { id: string }) {
           {attachments.length === 0 && <li className="text-gray-400">첨부된 사진이 없습니다.</li>}
           {attachments.map((a) => (
             <li key={a.id}>
-              · {ATTACHMENT_LABEL[a.type] ?? a.type} — <span className="text-gray-500">{a.fileUrl}</span>
+              · {ATTACHMENT_LABEL[a.type] ?? a.type} — <button type="button" onClick={() => openFile(a.fileUrl).catch((e) => alert(e.message))} className="text-brand underline">
+                보기
+              </button>
             </li>
           ))}
         </ul>
@@ -152,14 +156,15 @@ export function WorkOrderDetail({ id }: { id: string }) {
             ))}
           </select>
           <input
-            className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
-            placeholder="사진 URL (파일 저장소 연결 전 임시 입력)"
-            value={photoUrl}
-            onChange={(e) => setPhotoUrl(e.target.value)}
+            key={photoFile ? photoFile.name : 'empty'}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="flex-1 text-sm"
+            onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
             required
           />
           <button
-            disabled={addAttachment.isPending}
+            disabled={addAttachment.isPending || !photoFile}
             className="rounded border border-brand px-4 py-2 text-sm font-semibold text-brand hover:bg-brand hover:text-white disabled:opacity-50"
           >
             첨부
