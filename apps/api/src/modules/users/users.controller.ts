@@ -19,7 +19,7 @@ export class UsersController {
   @Post('invite')
   @Roles('ADMIN', 'MANAGER')
   invite(@CurrentUser() user: AuthUser, @Body() dto: InviteUserDto) {
-    return this.usersService.invite(user.companyId, dto);
+    return this.usersService.invite(user.companyId, user.role, dto);
   }
 
   @Delete(':id')

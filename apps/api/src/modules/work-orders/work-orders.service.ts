@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PUBLIC_USER_SELECT } from '../users/users.service';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
 import { CreateWorkRecordDto } from './dto/create-work-record.dto';
@@ -19,7 +20,7 @@ export class WorkOrdersService {
         ...(filters.siteId ? { siteId: filters.siteId } : {}),
         ...(filters.status ? { status: filters.status as any } : {}),
       },
-      include: { site: true, equipment: true, assignedWorker: true },
+      include: { site: true, equipment: true, assignedWorker: { select: PUBLIC_USER_SELECT } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -30,7 +31,7 @@ export class WorkOrdersService {
       include: {
         site: true,
         equipment: true,
-        assignedWorker: true,
+        assignedWorker: { select: PUBLIC_USER_SELECT },
         workRecords: true,
         attachments: true,
         reports: true,
@@ -59,10 +60,7 @@ export class WorkOrdersService {
       const equipment = await this.prisma.equipment.findFirst({ where: { id: dto.equipmentId, siteId: site.id } });
       if (!equipment) throw new NotFoundException('해당 현장의 설비를 찾을 수 없습니다.');
     }
-    if (dto.assignedUserId) {
-      const user = await this.prisma.user.findFirst({ where: { id: dto.assignedUserId, companyId } });
-      if (!user) throw new NotFoundException('담당자를 찾을 수 없습니다.');
-    }
+    if (dto.assignedUserId) await this.assertAssignee(companyId, dto.assignedUserId);
 
     return this.prisma.workOrder.create({
       data: {
@@ -87,6 +85,7 @@ export class WorkOrdersService {
     if (dto.status === 'CANCELLED' && order.reports.some((r: { status: string }) => LOCKED_REPORT_STATUSES.includes(r.status))) {
       throw new ConflictException('승인된 보고서가 있는 작업은 취소할 수 없습니다.');
     }
+    if (dto.assignedUserId) await this.assertAssignee(companyId, dto.assignedUserId);
     return this.prisma.workOrder.update({
       where: { id },
       data: {
@@ -112,6 +111,12 @@ export class WorkOrdersService {
       if (existing) return this.sameOrder(existing, workOrderId);
     }
     return this.prisma.attachment.create({ data: { workOrderId, ...dto } });
+  }
+
+  // 담당자는 같은 회사 소속이어야 한다 (생성·수정 공통).
+  private async assertAssignee(companyId: string, userId: string) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, companyId } });
+    if (!user) throw new NotFoundException('담당자를 찾을 수 없습니다.');
   }
 
   // 재전송이면 기존 행을 그대로 돌려주되, 다른 작업/회사의 행이면 거부한다.
