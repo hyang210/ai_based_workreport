@@ -1,6 +1,7 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PUBLIC_USER_SELECT } from '../users/users.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
 import { CreateWorkRecordDto } from './dto/create-work-record.dto';
@@ -11,7 +12,7 @@ const LOCKED_REPORT_STATUSES = ['APPROVED', 'GENERATED', 'SENT'];
 
 @Injectable()
 export class WorkOrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private attachments: AttachmentsService) {}
 
   findAll(companyId: string, filters: { siteId?: string; status?: string }) {
     return this.prisma.workOrder.findMany({
@@ -109,6 +110,10 @@ export class WorkOrdersService {
     if (dto.clientUuid) {
       const existing = await this.prisma.attachment.findUnique({ where: { clientUuid: dto.clientUuid } });
       if (existing) return this.sameOrder(existing, workOrderId);
+    }
+    // 우리 저장소에 이 회사가 올린 파일만 첨부할 수 있다. 임의 URL(javascript:, 외부 사이트)이 화면에서 열리지 않게.
+    if (!this.attachments.isOwnFileUrl(companyId, dto.fileUrl)) {
+      throw new BadRequestException('업로드한 파일의 URL만 첨부할 수 있습니다.');
     }
     return this.prisma.attachment.create({ data: { workOrderId, ...dto } });
   }

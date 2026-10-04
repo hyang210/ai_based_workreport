@@ -79,7 +79,9 @@ export async function apiUpload<T>(path: string, file: File): Promise<T> {
 // 토큰을 실어 받아 새 탭으로 연다. 외부 저장소(S3) URL은 그대로 연다.
 export async function openFile(url: string) {
   if (!url.startsWith(`${API_URL}/api/`)) {
-    window.open(url, '_blank');
+    // http(s)만 연다 (javascript: 등 스크립트 URL 차단).
+    if (!/^https?:\/\//i.test(url)) throw new Error('열 수 없는 파일 주소입니다.');
+    window.open(url, '_blank', 'noopener');
     return;
   }
   const token = getToken();

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Prisma, ReportStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PdfService } from '../pdf/pdf.service';
 import { AttachmentsService } from '../attachments/attachments.service';
@@ -131,22 +132,29 @@ export class ReportsService {
       });
     }
 
-    const approved = await this.prisma.report.update({
-      where: { id },
-      data: { status: 'APPROVED', approvedById, approvedAt: new Date() },
-    });
-
+    // 상태 전이·설비 이력·감사 로그를 한 트랜잭션으로 묶는다. 상태 조건을 update에 걸어
+    // 동시에 두 번 승인 요청이 와도 하나만 성공하게 한다 (위의 확인과 이 update 사이의 경쟁 방지).
     const { workOrder } = report;
-    if (workOrder.equipmentId) {
-      await this.equipment.recordHistory(
-        workOrder.equipmentId,
-        workOrder.id,
-        summarize((report.content as Content | null) ?? {}),
-        approved.approvedAt ?? new Date(),
-      );
-    }
-    await this.audit.log(companyId, approvedById, 'approve', 'report', id);
-    return approved;
+    const approvedAt = new Date();
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const { count } = await tx.report.updateMany({
+        where: { id, status: { in: APPROVABLE as ReportStatus[] } },
+        data: { status: 'APPROVED', approvedById, approvedAt },
+      });
+      if (count === 0) throw new ConflictException('이미 승인되었거나 승인할 수 없는 상태입니다.');
+
+      if (workOrder.equipmentId) {
+        await this.equipment.recordHistory(
+          workOrder.equipmentId,
+          workOrder.id,
+          summarize((report.content as Content | null) ?? {}),
+          approvedAt,
+          tx,
+        );
+      }
+      await this.audit.log(companyId, approvedById, 'approve', 'report', id, tx);
+      return tx.report.findUniqueOrThrow({ where: { id } });
+    });
   }
 
   // 승인된 내용으로만 PDF를 만든다 (설계서 5.2, 9.2). 승인 이후 내용 변경은 새 버전으로 (설계서 3.4).

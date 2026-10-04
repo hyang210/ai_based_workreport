@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { WorkOrdersService } from './work-orders.service';
 
 jest.mock('@prisma/client', () => ({
@@ -9,7 +9,7 @@ jest.mock('@prisma/client', () => ({
 
 function setup(reportStatuses: string[]) {
   const prisma: any = { workOrder: { update: jest.fn(async () => ({})) } };
-  const service = new WorkOrdersService(prisma);
+  const service = new WorkOrdersService(prisma, {} as any);
   jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'wo-1', reports: reportStatuses.map((status) => ({ status })) } as any);
   return { service, prisma };
 }
@@ -48,5 +48,28 @@ describe('WorkOrdersService.update — 담당자 변경', () => {
     prisma.user = { findFirst: jest.fn(async () => ({ id: 'u2' })) };
     await service.update('c1', 'wo-1', { assignedUserId: 'u2' } as any);
     expect(prisma.workOrder.update).toHaveBeenCalled();
+  });
+});
+
+describe('WorkOrdersService.addAttachment — 파일 URL', () => {
+  function attachSetup(own: boolean) {
+    const prisma: any = { attachment: { findUnique: jest.fn(async () => null), create: jest.fn(async ({ data }: any) => data) } };
+    const attachments: any = { isOwnFileUrl: jest.fn(() => own) };
+    const service = new WorkOrdersService(prisma, attachments);
+    jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'wo-1' } as any);
+    return { service, prisma, attachments };
+  }
+
+  it('우리 저장소의 이 회사 파일이 아니면 거부한다', async () => {
+    const { service, prisma, attachments } = attachSetup(false);
+    await expect(service.addAttachment('c1', 'wo-1', { type: 'PHOTO_AFTER', fileUrl: 'https://evil.example/x.png' } as any)).rejects.toBeInstanceOf(BadRequestException);
+    expect(attachments.isOwnFileUrl).toHaveBeenCalledWith('c1', 'https://evil.example/x.png');
+    expect(prisma.attachment.create).not.toHaveBeenCalled();
+  });
+
+  it('우리 저장소 파일이면 첨부한다', async () => {
+    const { service, prisma } = attachSetup(true);
+    await service.addAttachment('c1', 'wo-1', { type: 'PHOTO_AFTER', fileUrl: 'http://x/api/files/c1/a.png' } as any);
+    expect(prisma.attachment.create).toHaveBeenCalled();
   });
 });

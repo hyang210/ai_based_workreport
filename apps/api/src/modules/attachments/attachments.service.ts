@@ -44,6 +44,14 @@ export class AttachmentsService {
     return { uploadUrl, fileUrl: `${this.config.get<string>('S3_ENDPOINT')}/${this.bucket}/${key}`, key };
   }
 
+  // 이 회사가 우리 저장소에 올린 파일의 URL인지 확인한다. 파일명은 서버가 만든 uuid(.확장자)만 허용.
+  isOwnFileUrl(companyId: string, url: string): boolean {
+    const prefix = this.s3
+      ? `${this.config.get<string>('S3_ENDPOINT')}/${this.bucket}/${companyId}/`
+      : `${this.apiUrl}/api/files/${companyId}/`;
+    return url.startsWith(prefix) && /^[0-9a-f-]{36}(\.[a-z0-9]{2,5})?$/.test(url.slice(prefix.length));
+  }
+
   // 서버가 받은 파일(웹 업로드)이나 직접 만든 파일(렌더링된 PDF)을 저장하고 접근 URL을 돌려준다.
   async uploadBuffer(companyId: string, buffer: Buffer, contentType: string, ext = 'pdf') {
     const name = `${randomUUID()}.${ext}`;

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEquipmentDto } from './dto/create-equipment.dto';
 import { UpdateEquipmentDto } from './dto/update-equipment.dto';
@@ -66,9 +67,16 @@ export class EquipmentService {
 
   // 승인된 보고서의 작업 결과를 설비 이력으로 남긴다. 같은 작업은 한 번만 기록한다
   // (한 작업에서 여러 템플릿의 보고서를 승인해도 이력이 중복되지 않게).
-  async recordHistory(equipmentId: string, workOrderId: string, summary: string, occurredAt: Date) {
-    const existing = await this.prisma.equipmentHistory.findFirst({ where: { equipmentId, workOrderId } });
+  // db: 승인 트랜잭션 안에서 부를 때 그 트랜잭션 클라이언트를 넘긴다.
+  async recordHistory(
+    equipmentId: string,
+    workOrderId: string,
+    summary: string,
+    occurredAt: Date,
+    db: Prisma.TransactionClient = this.prisma,
+  ) {
+    const existing = await db.equipmentHistory.findFirst({ where: { equipmentId, workOrderId } });
     if (existing) return existing;
-    return this.prisma.equipmentHistory.create({ data: { equipmentId, workOrderId, summary, occurredAt } });
+    return db.equipmentHistory.create({ data: { equipmentId, workOrderId, summary, occurredAt } });
   }
 }

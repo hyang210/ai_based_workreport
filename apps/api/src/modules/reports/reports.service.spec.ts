@@ -18,9 +18,15 @@ const report = (over: any = {}) => ({
 
 function setup(r: any) {
   const prisma: any = {
-    report: { update: jest.fn(async ({ data }: any) => ({ ...r, ...data })), delete: jest.fn() },
+    report: {
+      update: jest.fn(async ({ data }: any) => ({ ...r, ...data })),
+      updateMany: jest.fn(async () => ({ count: 1 })),
+      findUniqueOrThrow: jest.fn(async () => ({ ...r, status: 'APPROVED' })),
+      delete: jest.fn(),
+    },
     aiGeneration: { create: jest.fn() },
   };
+  prisma.$transaction = jest.fn(async (fn: any) => fn(prisma));
   const equipment: any = { recordHistory: jest.fn(), buildContext: jest.fn(async () => '- 2026-08-12 베어링 교체') };
   const audit: any = { log: jest.fn() };
   const ai: any = { structure: jest.fn(async () => ({ model: 'm', output: { description: 'd', issue: null, action: null, result: null } })) };
@@ -33,7 +39,7 @@ describe('ReportsService', () => {
   it('필수 항목이 비어 있으면 승인을 막고 누락 필드를 알려준다', async () => {
     const { service, prisma } = setup(report({ workOrder: { ...report().workOrder, attachments: [] } }));
     await expect(service.approve('c1', 'r1', 'u1')).rejects.toThrow(/after_photos/);
-    expect(prisma.report.update).not.toHaveBeenCalled();
+    expect(prisma.report.updateMany).not.toHaveBeenCalled();
   });
 
   it('AI 초안 전(DRAFT)에는 승인할 수 없다', async () => {
@@ -41,11 +47,21 @@ describe('ReportsService', () => {
     await expect(service.approve('c1', 'r1', 'u1')).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('누락이 없으면 승인하고, 작업 결과를 설비 이력으로 남기고, 감사 로그를 쓴다', async () => {
-    const { service, equipment, audit } = setup(report());
-    await service.approve('c1', 'r1', 'u1');
-    expect(equipment.recordHistory).toHaveBeenCalledWith('eq-1', 'wo-1', '나사 풀림 → 조임 → 정상', expect.any(Date));
-    expect(audit.log).toHaveBeenCalledWith('c1', 'u1', 'approve', 'report', 'r1');
+  it('누락이 없으면 승인하고, 작업 결과를 설비 이력으로 남기고, 감사 로그를 쓴다 (한 트랜잭션)', async () => {
+    const { service, prisma, equipment, audit } = setup(report());
+    await expect(service.approve('c1', 'r1', 'u1')).resolves.toMatchObject({ status: 'APPROVED' });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.report.updateMany.mock.calls[0][0].where).toEqual({ id: 'r1', status: { in: ['AI_GENERATED', 'REVIEW'] } });
+    expect(equipment.recordHistory).toHaveBeenCalledWith('eq-1', 'wo-1', '나사 풀림 → 조임 → 정상', expect.any(Date), prisma);
+    expect(audit.log).toHaveBeenCalledWith('c1', 'u1', 'approve', 'report', 'r1', prisma);
+  });
+
+  it('동시 요청으로 이미 승인됐으면(갱신 0건) 거부하고 이력·감사 로그를 남기지 않는다', async () => {
+    const { service, prisma, equipment, audit } = setup(report());
+    prisma.report.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.approve('c1', 'r1', 'u1')).rejects.toBeInstanceOf(ConflictException);
+    expect(equipment.recordHistory).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 
   it('AI 초안은 설비 이력 Context를 붙여 구조화하고 결과와 생성 이력을 저장한다', async () => {
