@@ -6,9 +6,7 @@ import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
 import { CreateWorkRecordDto } from './dto/create-work-record.dto';
 import { CreateAttachmentDto } from './dto/create-attachment.dto';
-
-// 승인 이후의 보고서는 증빙 문서라서, 이런 보고서가 있는 작업은 취소할 수 없다.
-const LOCKED_REPORT_STATUSES = ['APPROVED', 'GENERATED', 'SENT'];
+import { isLockedReport } from '../reports/report-status';
 
 @Injectable()
 export class WorkOrdersService {
@@ -83,7 +81,7 @@ export class WorkOrdersService {
 
   async update(companyId: string, id: string, dto: UpdateWorkOrderDto) {
     const order = await this.findOne(companyId, id);
-    if (dto.status === 'CANCELLED' && order.reports.some((r: { status: string }) => LOCKED_REPORT_STATUSES.includes(r.status))) {
+    if (dto.status === 'CANCELLED' && order.reports.some((r: { status: string }) => isLockedReport(r.status))) {
       throw new ConflictException('승인된 보고서가 있는 작업은 취소할 수 없습니다.');
     }
     if (dto.assignedUserId) await this.assertAssignee(companyId, dto.assignedUserId);

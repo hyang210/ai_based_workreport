@@ -71,9 +71,13 @@ export class ReportsService {
 
   // 현장 기록 원문 + 설비 이력 Context -> AI 구조화 -> 보고서 초안 (설계서 6.1, 6.5).
   // 다시 호출하면 초안을 새로 만든다. 이력은 ai_generations에 남는다.
-  async draftWithAi(companyId: string, id: string) {
+  // 관리자가 이미 고친 초안(REVIEW)은 overwrite를 명시해야만 덮어쓴다 — 수정 내용이 조용히 사라지지 않게.
+  async draftWithAi(companyId: string, id: string, { overwrite = false }: { overwrite?: boolean } = {}) {
     const report = await this.findOne(companyId, id);
     this.assertEditable(report.status);
+    if (report.status === 'REVIEW' && !overwrite) {
+      throw new ConflictException('관리자가 수정한 내용이 있습니다. 덮어쓰려면 overwrite=true로 다시 요청하세요.');
+    }
 
     const { workOrder } = report;
     const text = workOrder.workRecords

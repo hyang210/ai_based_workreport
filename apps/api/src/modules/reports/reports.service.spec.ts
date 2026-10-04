@@ -73,6 +73,21 @@ describe('ReportsService', () => {
     expect(prisma.report.update.mock.calls[0][0].data.status).toBe('AI_GENERATED');
   });
 
+  it('관리자가 고친 초안(REVIEW)은 overwrite 없이 덮어쓰지 않는다', async () => {
+    const r = report({ status: 'REVIEW', workOrder: { ...report().workOrder, workRecords: [{ description: '소음 점검' }] } });
+    const { service, prisma, ai } = setup(r);
+    await expect(service.draftWithAi('c1', 'r1')).rejects.toBeInstanceOf(ConflictException);
+    expect(ai.structure).not.toHaveBeenCalled();
+    expect(prisma.report.update).not.toHaveBeenCalled();
+  });
+
+  it('overwrite를 명시하면 REVIEW 초안도 새로 만든다', async () => {
+    const r = report({ status: 'REVIEW', workOrder: { ...report().workOrder, workRecords: [{ description: '소음 점검' }] } });
+    const { service, prisma } = setup(r);
+    await service.draftWithAi('c1', 'r1', { overwrite: true });
+    expect(prisma.report.update.mock.calls[0][0].data.status).toBe('AI_GENERATED');
+  });
+
   it('작업 기록이 없으면 초안을 만들지 않는다', async () => {
     const { service } = setup(report({ status: 'DRAFT' }));
     await expect(service.draftWithAi('c1', 'r1')).rejects.toBeInstanceOf(BadRequestException);

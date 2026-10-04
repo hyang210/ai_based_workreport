@@ -1,4 +1,4 @@
-import { HttpException, Injectable } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -26,6 +26,7 @@ import { PushSyncEventsDto, SyncEventItemDto } from './dto/sync-event.dto';
 // 그래서 적용과 기록을 하나의 트랜잭션으로 묶지 않아도, 중간에 죽고 재전송돼도 중복이 생기지 않는다.
 
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'CANCELLED']);
+const PULL_PAGE_SIZE = 100;
 
 /** 재시도해도 결과가 같은, 예상된 거부 (검증 실패·정책 위반). FAILED로 기록한다. */
 class SyncRejected extends Error {}
@@ -45,18 +46,24 @@ export class SyncService {
     return { results };
   }
 
+  // 커서는 "createdAt|eventId". 같은 밀리초에 만들어진 이벤트가 페이지 경계에 걸려도 빠지지 않도록
+  // (createdAt, eventId) 순서로 정렬하고 그 다음부터 가져온다. 클라이언트는 nextCursor를 그대로 돌려보내면 된다.
   async pull(companyId: string, deviceId: string, cursor?: string) {
+    const after = cursor ? parseCursor(cursor) : undefined;
     const events = await this.prisma.syncEvent.findMany({
       where: {
         companyId,
         deviceId: { not: deviceId }, // 자기 자신이 보낸 이벤트는 되돌려주지 않음
         status: 'APPLIED',
-        ...(cursor ? { createdAt: { gt: new Date(cursor) } } : {}),
+        ...(after
+          ? { OR: [{ createdAt: { gt: after.createdAt } }, { createdAt: after.createdAt, eventId: { gt: after.eventId } }] }
+          : {}),
       },
-      orderBy: { createdAt: 'asc' },
-      take: 100,
+      orderBy: [{ createdAt: 'asc' }, { eventId: 'asc' }],
+      take: PULL_PAGE_SIZE,
     });
-    const nextCursor = events.length > 0 ? events[events.length - 1].createdAt.toISOString() : cursor ?? null;
+    const last = events[events.length - 1];
+    const nextCursor = last ? `${last.createdAt.toISOString()}|${last.eventId}` : cursor ?? null;
     return { events, nextCursor };
   }
 
@@ -142,6 +149,14 @@ export class SyncService {
     if (typeof uuid !== 'string') throw new SyncRejected('workOrderClientUuid가 필요합니다.');
     return this.workOrders.findByClientUuid(companyId, uuid);
   }
+}
+
+/** pull 커서 "ISO시각|eventId"를 푼다. 형식이 틀리면 400. */
+function parseCursor(cursor: string): { createdAt: Date; eventId: string } {
+  const [iso, eventId] = cursor.split('|');
+  const createdAt = new Date(iso);
+  if (!eventId || Number.isNaN(createdAt.getTime())) throw new BadRequestException('잘못된 cursor입니다.');
+  return { createdAt, eventId };
 }
 
 /** REST 엔드포인트와 같은 DTO 검증 규칙을 payload에도 그대로 적용한다. */

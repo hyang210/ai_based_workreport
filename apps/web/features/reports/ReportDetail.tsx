@@ -56,7 +56,16 @@ export function ReportDetail({ id }: { id: string }) {
   const content = () => Object.fromEntries(textKeys.map((k) => [k, draft[k] ?? '']));
   const save = () => apiFetch(`/reports/${id}/content`, { method: 'PATCH', body: JSON.stringify({ content: content() }) });
 
-  const aiDraft = useMutation({ mutationFn: () => apiFetch(`/reports/${id}/ai-draft`, { method: 'POST' }), onSuccess: refresh });
+  // 관리자가 고친 초안(REVIEW)은 확인을 받은 뒤에만 덮어쓴다 (서버도 overwrite 없이는 거부).
+  const aiDraft = useMutation({
+    mutationFn: (overwrite: boolean) => apiFetch(`/reports/${id}/ai-draft${overwrite ? '?overwrite=true' : ''}`, { method: 'POST' }),
+    onSuccess: refresh,
+  });
+  const requestAiDraft = (status: string) => {
+    const overwrite = status === 'REVIEW' || dirty;
+    if (overwrite && !window.confirm('수정한 내용이 AI 초안으로 덮어써집니다. 계속할까요?')) return;
+    aiDraft.mutate(overwrite);
+  };
   const saveMutation = useMutation({ mutationFn: save, onSuccess: refresh });
   // 승인 직전에 수정 중인 내용이 있으면 먼저 저장해서, 서버가 최신 내용으로 누락을 검사하게 한다.
   const approve = useMutation({
@@ -155,7 +164,7 @@ export function ReportDetail({ id }: { id: string }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <button
-          onClick={() => aiDraft.mutate()}
+          onClick={() => requestAiDraft(report.status)}
           disabled={!editable || aiDraft.isPending}
           className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
         >

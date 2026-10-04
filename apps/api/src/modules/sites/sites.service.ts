@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LOCKED_REPORT_STATUSES } from '../reports/report-status';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
 
@@ -31,6 +32,11 @@ export class SitesService {
 
   async remove(companyId: string, id: string) {
     await this.findOne(companyId, id);
+    // 현장을 지우면 작업·보고서까지 cascade로 지워진다. 승인된 보고서(증빙)가 있으면 막는다.
+    const locked = await this.prisma.report.count({
+      where: { workOrder: { siteId: id }, status: { in: LOCKED_REPORT_STATUSES } },
+    });
+    if (locked > 0) throw new ConflictException('승인된 보고서가 있는 현장은 삭제할 수 없습니다.');
     return this.prisma.site.delete({ where: { id } });
   }
 }

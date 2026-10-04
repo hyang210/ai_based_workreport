@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -27,10 +27,11 @@ export class ReportsController {
     return this.reportsService.create(user.companyId, dto);
   }
 
-  // 현장 기록 + 설비 이력 Context -> AI 구조화 -> 초안
+  // 현장 기록 + 설비 이력 Context -> AI 구조화 -> 초안. 관리자가 고친 초안을 덮어쓰려면 ?overwrite=true
   @Post(':id/ai-draft')
-  draftWithAi(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.reportsService.draftWithAi(user.companyId, id);
+  @Roles('ADMIN', 'MANAGER')
+  draftWithAi(@CurrentUser() user: AuthUser, @Param('id') id: string, @Query('overwrite') overwrite?: string) {
+    return this.reportsService.draftWithAi(user.companyId, id, { overwrite: overwrite === 'true' });
   }
 
   @Patch(':id/content')
@@ -57,6 +58,7 @@ export class ReportsController {
   }
 
   @Post(':id/generate')
+  @Roles('ADMIN', 'MANAGER')
   generate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.reportsService.generatePdf(user.companyId, id);
   }

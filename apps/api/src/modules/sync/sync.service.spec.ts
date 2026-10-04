@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { SyncService } from './sync.service';
 
 jest.mock('@prisma/client', () => ({
@@ -125,5 +125,24 @@ describe('SyncService', () => {
     const { service, prisma } = setup();
     await service.pull('c1', 'dev-1');
     expect(prisma.syncEvent.findMany.mock.calls[0][0].where).toMatchObject({ companyId: 'c1' });
+  });
+
+  it('pull 커서는 (createdAt, eventId) 기준으로 이어서 가져온다 — 같은 밀리초 이벤트가 빠지지 않게', async () => {
+    const { service, prisma } = setup();
+    const t = new Date('2026-10-05T00:00:00.000Z');
+    prisma.syncEvent.findMany.mockResolvedValueOnce([{ eventId: 'e-2', createdAt: t }]);
+    const first = await service.pull('c1', 'dev-1', '2026-10-04T23:59:59.000Z|e-0');
+    expect(first.nextCursor).toBe('2026-10-05T00:00:00.000Z|e-2');
+    const where = prisma.syncEvent.findMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { createdAt: { gt: new Date('2026-10-04T23:59:59.000Z') } },
+      { createdAt: new Date('2026-10-04T23:59:59.000Z'), eventId: { gt: 'e-0' } },
+    ]);
+    expect(prisma.syncEvent.findMany.mock.calls[0][0].orderBy).toEqual([{ createdAt: 'asc' }, { eventId: 'asc' }]);
+  });
+
+  it.each(['not-a-date|e-1', '2026-10-05T00:00:00.000Z'])('잘못된 pull 커서(%s)는 400', async (cursor) => {
+    const { service } = setup();
+    await expect(service.pull('c1', 'dev-1', cursor)).rejects.toBeInstanceOf(BadRequestException);
   });
 });

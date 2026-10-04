@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, openFile } from '@/lib/api-client';
 import { REPORT_STATUS_LABEL } from '@/lib/labels';
 import type { Report } from '@workreport/shared-types';
 
@@ -15,9 +15,16 @@ export function ReportsList() {
   });
 
   const draft = useMutation({
-    mutationFn: (id: string) => apiFetch(`/reports/${id}/ai-draft`, { method: 'POST' }),
+    mutationFn: ({ id, overwrite }: { id: string; overwrite: boolean }) =>
+      apiFetch(`/reports/${id}/ai-draft${overwrite ? '?overwrite=true' : ''}`, { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports'] }),
   });
+  // 관리자가 고친 초안(REVIEW)은 확인을 받은 뒤에만 덮어쓴다.
+  const requestDraft = (report: Report) => {
+    const overwrite = report.status === 'REVIEW';
+    if (overwrite && !window.confirm('수정한 내용이 AI 초안으로 덮어써집니다. 계속할까요?')) return;
+    draft.mutate({ id: report.id, overwrite });
+  };
 
   const approve = useMutation({
     mutationFn: (id: string) => apiFetch(`/reports/${id}/approve`, { method: 'POST' }),
@@ -63,16 +70,17 @@ export function ReportsList() {
               <td className="px-4 py-2 text-gray-600">{REPORT_STATUS_LABEL[report.status]}</td>
               <td className="px-4 py-2">
                 {report.pdfUrl ? (
-                  <a href={report.pdfUrl} target="_blank" className="text-brand underline">
+                  // 우리 API 파일은 인증 헤더가 필요해서 <a href>로는 열리지 않는다 (401).
+                  <button type="button" onClick={() => openFile(report.pdfUrl!).catch((e) => alert(e.message))} className="text-brand underline">
                     다운로드
-                  </a>
+                  </button>
                 ) : (
                   <span className="text-gray-400">-</span>
                 )}
               </td>
               <td className="space-x-2 px-4 py-2 text-right">
                 <button
-                  onClick={() => draft.mutate(report.id)}
+                  onClick={() => requestDraft(report)}
                   disabled={draft.isPending}
                   className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
                 >
