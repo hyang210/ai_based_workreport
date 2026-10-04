@@ -10,7 +10,7 @@ export class PdfService {
     const sectionsHtml = (sections?.sections ?? [])
       .map((section: any) => {
         const rows = (section.fields ?? [])
-          .map((fieldKey: string) => `<tr><th>${fieldKey}</th><td>${this.escape(data[fieldKey])}</td></tr>`)
+          .map((fieldKey: string) => `<tr><th>${this.escape(fieldKey)}</th><td>${this.escape(data[fieldKey])}</td></tr>`)
           .join('');
         return `<h2>${this.escape(section.title)}</h2><table>${rows}</table>`;
       })
@@ -41,8 +41,11 @@ export class PdfService {
     const { chromium } = require('playwright');
     const browser = await chromium.launch();
     try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle' });
+      // 보고서 HTML은 정적 문서다. 스크립트 실행과 외부 요청을 모두 막아 주입된 내용이 서버에서 동작하지 않게 한다.
+      const context = await browser.newContext({ javaScriptEnabled: false });
+      await context.route('**/*', (route: { abort: () => Promise<void> }) => route.abort());
+      const page = await context.newPage();
+      await page.setContent(html, { waitUntil: 'load' });
       return await page.pdf({ format: 'A4', printBackground: true });
     } finally {
       await browser.close();
@@ -51,6 +54,9 @@ export class PdfService {
 
   private escape(value: unknown): string {
     if (value === null || value === undefined) return '';
-    return String(value).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+    return String(value).replace(
+      /[&<>"']/g,
+      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string),
+    );
   }
 }
