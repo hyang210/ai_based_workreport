@@ -5,6 +5,7 @@ import { AttachmentsService } from '../attachments/attachments.service';
 import { AuditService } from '../audit/audit.service';
 import { AiService } from '../ai/ai.service';
 import { EquipmentService } from '../equipment/equipment.service';
+import { PUBLIC_USER_SELECT } from '../users/users.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { findMissing } from './missing-fields';
 
@@ -38,7 +39,7 @@ export class ReportsService {
     const report = await this.prisma.report.findFirst({
       where: { id, workOrder: { site: { companyId } } },
       include: {
-        workOrder: { include: { site: true, assignedWorker: true, workRecords: true, attachments: true } },
+        workOrder: { include: { site: true, assignedWorker: { select: PUBLIC_USER_SELECT }, workRecords: true, attachments: true } },
         template: { include: { templateFields: true } },
       },
     });

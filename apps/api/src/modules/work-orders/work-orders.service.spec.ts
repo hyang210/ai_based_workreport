@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { WorkOrdersService } from './work-orders.service';
 
 jest.mock('@prisma/client', () => ({
@@ -30,6 +30,23 @@ describe('WorkOrdersService.update — 작업 취소', () => {
   it('취소가 아닌 상태 변경은 승인된 보고서가 있어도 막지 않는다', async () => {
     const { service, prisma } = setup(['APPROVED']);
     await service.update('c1', 'wo-1', { status: 'COMPLETED' } as any);
+    expect(prisma.workOrder.update).toHaveBeenCalled();
+  });
+});
+
+describe('WorkOrdersService.update — 담당자 변경', () => {
+  it('다른 회사 사용자는 담당자로 지정할 수 없다', async () => {
+    const { service, prisma } = setup([]);
+    prisma.user = { findFirst: jest.fn(async () => null) };
+    await expect(service.update('c1', 'wo-1', { assignedUserId: 'other-company-user' } as any)).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({ where: { id: 'other-company-user', companyId: 'c1' } });
+    expect(prisma.workOrder.update).not.toHaveBeenCalled();
+  });
+
+  it('같은 회사 사용자는 담당자로 지정할 수 있다', async () => {
+    const { service, prisma } = setup([]);
+    prisma.user = { findFirst: jest.fn(async () => ({ id: 'u2' })) };
+    await service.update('c1', 'wo-1', { assignedUserId: 'u2' } as any);
     expect(prisma.workOrder.update).toHaveBeenCalled();
   });
 });
